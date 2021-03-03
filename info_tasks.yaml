@@ -1,0 +1,22 @@
+---
+- name: Display target machine public ip address
+  debug:
+    msg: "{{ ansible_host }}"
+
+- name: Check application status
+  uri:
+    url: http://{{ ansible_host }}
+    timeout: 1
+    return_content: yes
+  changed_when: no
+  check_mode: no
+  failed_when: no
+  register: app_status
+
+- name: Display application HTTP status code
+  debug:
+    msg: "{{ app_status.status }}"
+
+- name: Display request message
+  debug:
+    msg: "{{ app_status.msg }}"

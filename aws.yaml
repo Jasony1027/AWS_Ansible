@@ -1,0 +1,87 @@
+---
+- hosts: localhost
+  vars:
+    AWS_NAME_PREFIX: ACIT4640
+  tasks:
+    - name: Provision the AWS VPC
+      tags:
+        - never
+        - aws
+        - provision
+      ec2_vpc_net:
+        state: present
+        cidr_block: 10.42.0.0/16
+        name: "{{ AWS_NAME_PREFIX }}_VPC"
+      register: vpc_data
+   
+    - name: Provision the AWS subent
+      tags:
+        - never
+        - aws
+        - provision
+      when: vpc_data.changed
+      ec2_vpc_subnet:
+        state: present
+        cidr: 10.42.10.0/24
+        az: us-west-2c
+        vpc_id: "{{ vpc_data.vpc.id }}"
+        tags:
+          Name: "{{ AWS_NAME_PREFIX }}_SUBNET"
+      register: subnet_data   
+
+    - name: Provision AWS VPC setup
+      tags:
+        - never
+        - aws
+        - provision
+      when: vpc_data.changed
+      import_tasks: vpc_tasks.yaml
+     
+    - name: Provision EC2 instance
+      tags:
+        - never
+        - aws
+        - provision
+      when: vpc_data.changed
+      ec2:
+        instance_type: t2.micro
+        key_name: ACIT4640_KEY
+        wait: yes
+        image: ami-0157b1e4eefd91fd7
+        vpc_subnet_id: "{{ subnet_data.subnet.id }}"
+        assign_public_ip: yes
+        group: "{{ AWS_NAME_PREFIX}}_SECGRP"
+        instance_tags:
+          Name: "{{ AWS_NAME_PREFIX}}_VM"
+        count_tag:
+          Name: "{{ AWS_NAME_PREFIX}}_VM"
+        exact_count: 1
+      register: ec2_info
+
+    - name: Wait for ssh to come up
+      tags:
+        - never
+        - aws
+        - provision
+      when: vpc_data.changed
+      wait_for: host="{{ ec2_info.tagged_instances[0].public_ip }}" port=22 delay=10  timeout=300
+    
+    - name: Allocate Elastic IP
+      tags:
+        - never
+        - aws 
+        - provision
+      when: vpc_data.changed
+      ec2_eip:
+        device_id: "{{ ec2_info.tagged_instances[0].id }}"
+        in_vpc: true
+        public_ipv4_pool: ipv4pool-ec2-0588c9b75a25d1a02
+
+    - name: Run all clean up tasks
+      tags:
+        - never
+        - clean
+      import_tasks: clean.yaml
+
+    - name: Refresh inventory
+      meta: refresh_inventory

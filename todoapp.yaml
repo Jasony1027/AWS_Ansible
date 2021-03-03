@@ -1,0 +1,22 @@
+- import_playbook: aws.yaml
+- hosts: aws_ec2
+  become: true
+  vars:
+    todoapp_user: todoapp
+    application_path: /app
+
+  tasks:        
+    - name: Run app tasks
+      tags:
+        - application
+        - provision
+      import_tasks: app_tasks.yaml
+
+    - name: Run info tasks
+      tags:
+        - info
+        - provision
+      import_tasks: info_tasks.yaml
+   
+      
+      

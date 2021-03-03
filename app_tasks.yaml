@@ -1,0 +1,104 @@
+---
+- name: Disable SELinux
+  selinux:
+    state: disabled
+# Set up Nginx
+- name: Install Ngnix
+  package:
+    name: nginx
+    state: present
+
+- name: Provision the nginx config file
+  copy:
+    src: nginx.conf
+    dest: /etc/nginx/nginx.conf 
+
+- name: Enable and start nginx
+  systemd:
+    name: nginx 
+    enabled: yes
+    state: started
+
+# Set up MongoDB
+- name: Provision the MongoDB repo file
+  copy:
+    src: mongodb-org-4.4.repo
+    dest: /etc/yum.repos.d/mongodb-org-4.4.repo
+
+- name: Install MongoDB
+  package:
+    name: mongodb-org
+    state: present
+
+- name: Start MongoDB and enabled at boot
+  systemd:
+    name: mongod
+    enabled: yes
+    state: started
+
+# Set up todoapp server environments/packages
+- name: Download NodeJS installation repo
+  get_url:
+    url: https://rpm.nodesource.com/setup_14.x 
+    dest: /tmp/nodejs_setup
+  register: nodejs_repo_task
+
+- name: Execute NodeJS installation script
+  when: nodejs_repo_task.changed
+  shell: bash /tmp/nodejs_setup
+
+- name: Install required pakages for todoapp
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - git
+    - nodejs
+
+- name: Make sure todoapp user exists
+  user: 
+    name: "{{todoapp_user}}"
+    state: present
+
+- name: Provision the unit file for todoapp
+  template:
+    src: todoapp.j2
+    dest: /etc/systemd/system/todoapp.service  
+
+# Set up todoapp source code and start the service 
+- name: Git clone todoapp repo
+  become_method: sudo
+  become_user: "{{ todoapp_user }}"
+  git:
+    repo: https://github.com/timoguic/ACIT4640-todo-app.git
+    dest: /home/{{ todoapp_user }}{{ application_path }}
+    force: yes
+
+- name: Change app directory permissions
+  file:
+    path: /home/{{ todoapp_user }}
+    mode: 0755
+    recurse: yes
+
+- name: Install node modules 
+  become_method: sudo
+  become_user: "{{ todoapp_user }}"
+  shell: npm install
+  args:
+    chdir: /home/{{ todoapp_user }}{{ application_path }}
+
+- name: Pause for 15 seconds to allow mongodb to be started
+  pause:
+    seconds: 15
+
+- name: Restart nginx
+  systemd:
+    name: nginx 
+    state: restarted
+
+- name: Enable and start todoapp service
+  systemd:
+    name: todoapp 
+    enabled: yes
+    state: started
+

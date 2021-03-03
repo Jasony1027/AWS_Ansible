@@ -1,0 +1,44 @@
+---
+- name: Provision the AWS internet gateway
+  ec2_vpc_igw:
+    state: present
+    vpc_id: "{{ vpc_data.vpc.id }}"
+    tags:
+      Name: "{{ AWS_NAME_PREFIX }}_IGW"
+  register: igw_data
+
+- name: Provision the AWS routing table
+  ec2_vpc_route_table:
+    state: present
+    vpc_id: "{{ vpc_data.vpc.id }}"
+    subnets: "{{ subnet_data.subnet.id }}"
+    routes:
+      - dest: 0.0.0.0/0
+        gateway_id: "{{ igw_data.gateway_id }}"
+    tags:
+      Name: "{{ AWS_NAME_PREFIX }}_RTBL"
+
+- name: Get IP address
+  uri:
+    url: http://ifconfig.me/ip
+    return_content: yes
+  register: my_public_ip
+
+- name: Provision the AWS security group
+  ec2_group:
+    state: present
+    name: "{{ AWS_NAME_PREFIX }}_SECGRP"
+    vpc_id: "{{ vpc_data.vpc.id }}"
+    description: Traffic filetering for todoapp
+    rules:
+      - proto: tcp
+        ports:
+          - 80
+        cidr_ip: 0.0.0.0/0
+        rule_desc: Allow HTTP from all
+      - proto: tcp
+        ports:
+          - 22
+        cidr_ip: "{{ my_public_ip.content }}/32"
+        rule_desc: Allow SSH from my IP
+  register: secgroup_data
